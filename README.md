@@ -1,47 +1,71 @@
 # Jellyfin
 
-Jellyfin is configured for https://jellyfin.enucatl.com, with read-only media from
-`/scratch/qbittorrent` mounted at `/media`. Configuration and cache use Docker
-volumes. This host remaps container UID 1000 to host UID 101000, matching the
-media owner. The service has a 2 GiB memory limit and four CPUs.
+Jellyfin is an intranet service at https://jellyfin.atlas.home.arpa. Traefik
+terminates HTTPS and applies the standard `secured@file` middleware (network
+allowlist, rate limit, and HTTPS redirect). Authelia is not used. No host port is
+published. Native clients use the same URL and authenticate directly to Jellyfin.
 
-Jellyfin manages its own accounts. Use a separate non-admin user for watching.
-TV clients can sign in with username/password or supported Quick Connect.
-No Cloudflare Access login is added, to preserve native client compatibility.
-The initial admin password is stored locally in `secrets/admin_password`;
-change it after signing in. Never publish an unfinished setup wizard.
+Start with `docker compose up -d`. Stop with `docker compose stop`.
+Clients must trust the homelab CA and support the certificate and TLS settings
+used by the existing Traefik service. LAN IPv4 and IPv6 HTTPS have been verified
+through the router using a modern TLS client. Host-local
+requests can receive 403 because Docker presents a gateway address
+outside the standard allowlist; the router's curl also cannot negotiate the current
+certificate. Shared Traefik configuration has not been changed for this stack.
 
-Local start: `docker compose up -d jellyfin`.
-After provisioning the tunnel and token: `docker compose --profile public up -d`.
-The tunnel and DNS record have been provisioned.
-LAN endpoint: `http://atlas.home.arpa:8096` (`http://10.0.0.158:8096`).
-No GPU is exposed on this host, so transcoding uses the CPU.
+The standard policy permits LAN, trusted WiFi, Cortex, and WireGuard over IPv4
+and IPv6, plus Docker IPv4 sources (`172.16.0.0/12`). Guest and IoT networks are
+excluded. Other containers on the shared `traefik_proxy` network can still reach
+Jellyfin directly; the allowlist protects requests entering through Traefik.
 
-## Tunnel
+## Authentication
 
-Terraform follows the neighboring Cloudflare tunnel projects. Credentials come
-from Vault `kv/puppet`; never commit credentials, tokens, plans, or state.
-The API token must have Cloudflare One Connector: cloudflared Edit permission
-for the account and DNS Edit permission for the enucatl.com zone. The new token
-is currently stored as `TOKEN` in the ignored `.env` file.
+The official LDAP Authentication plugin, version 24.0.0.0, is installed in the
+persistent configuration volume. It uses FreeIPA directly over verified LDAPS.
+Configure it through Dashboard → Plugins → LDAP-Auth:
 
-```sh
-cd terraform
-. ../.env
-export CLOUDFLARE_API_TOKEN="$TOKEN"
-export TF_VAR_account_id="$(vault kv get -field=cloudflare_account_id kv/puppet)"
-export TF_VAR_zone_id="$(vault kv get -field=cloudflare_zone_id kv/puppet)"
-terraform init
-terraform plan -out=jellyfin.tfplan
-terraform apply jellyfin.tfplan
-(umask 077; terraform output -raw tunnel_token > ../secrets/tunnel_token)
-setfacl -m u:165532:r ../secrets/tunnel_token
-```
+| Setting | Value |
+| --- | --- |
+| Server / port | `ipa.home.arpa` / `636` |
+| Secure LDAP / StartTLS / skip certificate verification | Enabled / disabled / disabled |
+| Root CA path | `/etc/ipa/ca.crt` |
+| Bind user | `uid=ldap_ro,cn=users,cn=accounts,dc=home,dc=arpa` |
+| User and admin base DN | `cn=users,cn=accounts,dc=home,dc=arpa` |
+| User filter | `(&(objectClass=posixAccount)(!(nsAccountLock=TRUE))(!(uid=ldap_ro)))` |
+| Admin filter | `(&(objectClass=posixAccount)(memberOf=cn=admins,cn=groups,cn=accounts,dc=home,dc=arpa))` |
+| Search attributes / username attribute | `uid` / `uid` |
+| Stable ID attribute | `ipaUniqueID` |
+| Create LDAP users / access all libraries | Enabled / enabled |
+| Allow password changes / memberUid admin filter | Disabled / disabled |
 
-The ACL lets cloudflared's UID 65532 (host UID 165532 with this host's Docker
-remapping) read the token without making it world-readable.
+The bind password uses the existing read-only directory account, also used by
+Authelia, and is saved privately in the plugin's configuration volume. No LDAP
+password is committed. The CA and system trust bundle are mounted read-only.
 
-Back up local Terraform state and the configuration volume securely.
-Cloudflare restricts video delivery through public Tunnel hostnames on standard
-plans unless using an appropriate paid service; bypassing cache does not remove
-that restriction. See https://developers.cloudflare.com/cloudflare-one/faq/cloudflare-tunnels-faq/.
+Sign in with a FreeIPA username and password. LDAP users are created on first
+login. Membership of FreeIPA's `admins` group grants Jellyfin administration;
+admin status is refreshed at each LDAP login, not continuously during a session.
+The existing `admin` account uses LDAP authentication and LDAP password reset;
+its former local password is no longer accepted. There is no local administrator.
+The existing non-admin `brandon` account and its watch history are preserved.
+LDAP-bound accounts cannot use Jellyfin to change directory passwords.
+
+Before migration, configuration, database, and plugins were backed up locally to
+`secrets/before-ldap.tar.gz`. Backups contain sensitive data; keep them private.
+The original local password file is historical and does not authenticate the
+LDAP admin account. Back up the configuration volume securely, including plugin
+settings. Restoring the pre-migration backup also restores local authentication.
+
+## Media and hardening
+
+The host directory `/scratch/qbittorrent` is mounted read-only at `/media`.
+Use `/media` paths in Dashboard → Libraries. Configuration and cache use Docker
+volumes. UID 1000 maps to host UID 101000, matching the media owner. All Linux
+capabilities are dropped, privilege escalation is blocked, and the root
+filesystem is read-only. The service has a 2 GiB memory limit and four CPUs.
+No GPU is exposed, so transcoding uses the CPU.
+
+Jellyfin trusts forwarded headers from the existing `traefik_proxy` IPv4 subnet
+`172.16.32.0/20`. Update Known Proxies in Dashboard → Networking if that subnet
+changes. The previous Cloudflare connector, public DNS record, and tunnel have
+been removed, along with their Terraform configuration.

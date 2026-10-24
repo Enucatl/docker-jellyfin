@@ -10,12 +10,22 @@ services:
       - config:/config
       - cache:/cache
       - /scratch/qbittorrent:/media:ro
+      - /etc/ssl/certs/ca-certificates.crt:/etc/ssl/certs/ca-certificates.crt:ro
+      - /etc/ipa/ca.crt:/etc/ipa/ca.crt:ro
     tmpfs:
       - /tmp:size=256m,uid=1000,gid=1000
-    ports:
-      - "10.0.0.158:8096:8096"
+    networks:
+      - traefik_proxy
     environment:
-      JELLYFIN_PublishedServerUrl: https://jellyfin.enucatl.com
+      JELLYFIN_PublishedServerUrl: https://jellyfin.atlas.home.arpa
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.docker.network=traefik_proxy'
+      - 'traefik.http.routers.jellyfin.rule=Host(`jellyfin.atlas.home.arpa`)'
+      - 'traefik.http.routers.jellyfin.entrypoints=https'
+      - 'traefik.http.routers.jellyfin.tls=true'
+      - 'traefik.http.routers.jellyfin.middlewares=secured@file'
+      - 'traefik.http.services.jellyfin.loadbalancer.server.port=8096'
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8096/health"]
       interval: 30s
@@ -23,29 +33,10 @@ services:
       retries: 5
       start_period: 60s
 
-  cloudflared:
-    extends:
-      file: ../compose-security-baseline/hardening.yml
-      service: hardened-small
-    image: cloudflare/cloudflared:latest
-    profiles: [public]
-    environment:
-      TUNNEL_TOKEN_FILE: /run/secrets/tunnel_token
-      TUNNEL_METRICS: 127.0.0.1:20241
-    secrets:
-      - tunnel_token
-    command: tunnel --no-autoupdate run
-    healthcheck:
-      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:20241", "ready"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-
 volumes:
   config:
   cache:
 
-secrets:
-  tunnel_token:
-    file: ./secrets/tunnel_token
+networks:
+  traefik_proxy:
+    external: true
