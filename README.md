@@ -2,8 +2,8 @@
 
 Jellyfin is an intranet service at https://jellyfin.atlas.home.arpa. Traefik
 terminates HTTPS and applies the standard `secured@file` middleware (network
-allowlist, rate limit, and HTTPS redirect). Authelia is not used. No host port is
-published. Native clients use the same URL and authenticate directly to Jellyfin.
+allowlist, rate limit, and HTTPS redirect). Authelia provides OIDC login. No host
+port is published. Native clients use the same URL.
 
 Start with `docker compose up -d`. Stop with `docker compose stop`.
 Clients must trust the homelab CA and support the certificate and TLS settings
@@ -21,41 +21,74 @@ Traefik still use the standard allowlist.
 
 ## Authentication
 
-The official LDAP Authentication plugin, version 24.0.0.0, is installed in the
-persistent configuration volume. It uses FreeIPA directly over verified LDAPS.
-Configure it through Dashboard → Plugins → LDAP-Auth:
+Jellyfin uses OpenID Connect with Authelia, which authenticates against FreeIPA.
+The `SSO-Auth` plugin from [danbro96/jellyfin-plugin-sso](https://github.com/danbro96/jellyfin-plugin-sso),
+version 5.0.0.0 (Jellyfin 12 ABI), is installed in the configuration volume.
+The LDAP plugin and its bind credentials have been removed from Jellyfin.
+There is no Authelia ForwardAuth gate on the Jellyfin route.
+
+### Sign in
+
+In a browser, select **Sign in with Authelia**, or visit
+https://jellyfin.atlas.home.arpa/sso/OID/start/authelia directly. Use your FreeIPA
+credentials on Authelia. Authentication currently uses Authelia's `one_factor`
+policy, matching the existing intranet services; OIDC alone does not add MFA.
+The `ldap_ro` directory service account is denied by the client policy.
+
+For Android TV or another client that does not offer browser SSO, select
+**Quick Connect**, then approve its code from an already signed-in Jellyfin
+browser under Settings → Quick Connect. Quick Connect remains enabled. Native
+Android browser SSO is supported by this plugin fork; actual device compatibility
+still needs checking. Direct username/password login to Jellyfin is disabled.
+
+FreeIPA's `admins` group grants administrator access. Other users receive normal
+viewing accounts with access to all libraries; media deletion and management
+remain disabled for existing non-admin users. Group-derived administrator status
+is refreshed at each SSO login, not continuously during an active session.
+Existing usernames retain their Jellyfin IDs and watch history. All existing
+accounts now use SSO-only authentication and previous device sessions have been
+revoked. A preserved account without a matching FreeIPA username (currently
+`brandon`) needs that directory identity or an explicit account link before it
+can sign in through SSO. No local administrator or LDAP password login remains.
+
+### Plugin configuration
+
+Add the repository
+`https://raw.githubusercontent.com/danbro96/jellyfin-plugin-sso/manifest-release/manifest.json`
+in Dashboard → Plugins → Repositories, install SSO-Auth 5.0.0.0, and restart.
+The installed archive was checked against manifest MD5
+`88f964a08c20bce65a9404afbd5b270e`. Configure provider `authelia`:
 
 | Setting | Value |
 | --- | --- |
-| Server / port | `ipa.home.arpa` / `636` |
-| Secure LDAP / StartTLS / skip certificate verification | Enabled / disabled / disabled |
-| Root CA path | `/etc/ipa/ca.crt` |
-| Bind user | `uid=ldap_ro,cn=users,cn=accounts,dc=home,dc=arpa` |
-| User and admin base DN | `cn=users,cn=accounts,dc=home,dc=arpa` |
-| User filter | `(&(objectClass=posixAccount)(!(nsAccountLock=TRUE))(!(uid=ldap_ro)))` |
-| Admin filter | `(&(objectClass=posixAccount)(memberOf=cn=admins,cn=groups,cn=accounts,dc=home,dc=arpa))` |
-| Search attributes / username attribute | `uid` / `uid` |
-| Stable ID attribute | `ipaUniqueID` |
-| Create LDAP users / access all libraries | Enabled / enabled |
-| Allow password changes / memberUid admin filter | Disabled / disabled |
+| OIDC endpoint | `https://authelia.atlas.home.arpa` |
+| Client ID | `jellyfin` |
+| Client secret | Private `secrets/oidc_client_secret` |
+| Enabled / authorization / all folders | Enabled / enabled / enabled |
+| Admin roles / role claim | `admins` / `groups` |
+| Required roles | Empty (all users admitted by Authelia's client policy) |
+| Additional scopes | `groups` (the plugin also requests `openid profile`) |
+| Username claim | `preferred_username` |
+| Default provider | `Jellyfin.Plugin.SSO_Auth.Api.SSOController` |
+| Scheme override / new path | `https` / enabled |
+| Disable pushed authorization | Enabled |
+| Disable HTTPS / skip endpoint or issuer validation | All disabled |
+| Live TV access / management | Disabled / disabled |
 
-The bind password uses the existing read-only directory account, also used by
-Authelia, and is saved privately in the plugin's configuration volume. No LDAP
-password is committed. The CA and system trust bundle are mounted read-only.
+The callback is `https://jellyfin.atlas.home.arpa/sso/OID/redirect/authelia`.
+Authelia requires PKCE S256 and `client_secret_post`. Its client definition is
+tracked in `../authelia/config/configuration.yml`; its PBKDF2 secret digest is
+mounted from ignored `../authelia/secrets/oidc_jellyfin_client_secret_digest`.
+The digest file needs read access for remapped container UID 101000.
 
-Sign in with a FreeIPA username and password. LDAP users are created on first
-login. Membership of FreeIPA's `admins` group grants Jellyfin administration;
-admin status is refreshed at each LDAP login, not continuously during a session.
-The existing `admin` account uses LDAP authentication and LDAP password reset;
-its former local password is no longer accepted. There is no local administrator.
-The existing non-admin `brandon` account and its watch history are preserved.
-LDAP-bound accounts cannot use Jellyfin to change directory passwords.
-
-Before migration, configuration, database, and plugins were backed up locally to
-`secrets/before-ldap.tar.gz`. Backups contain sensitive data; keep them private.
-The original local password file is historical and does not authenticate the
-LDAP admin account. Back up the configuration volume securely, including plugin
-settings. Restoring the pre-migration backup also restores local authentication.
+The plugin stores the raw OIDC secret and account links in writable
+`/config/plugins/configurations/SSO-Auth.xml` (mode 600). It does not support a
+secret-file field. The private source secret is ignored by Git. Back up the
+configuration volume securely: the XML and backups contain credentials.
+Before migration, configuration, database, and plugins were backed up to
+`secrets/before-oidc.tar.gz`. Restoring that backup also restores LDAP and the
+previous sessions; stop Jellyfin before restoring. Historical local password
+files are not active login credentials.
 
 ## Media and hardening
 
