@@ -15,8 +15,9 @@ certificate. Shared Traefik configuration has not been changed for this stack.
 
 The standard policy permits LAN, trusted WiFi, Cortex, and WireGuard over IPv4
 and IPv6, plus Docker IPv4 sources (`172.16.0.0/12`). Guest and IoT networks are
-excluded. Other containers on the shared `traefik_proxy` network can still reach
-Jellyfin directly; the allowlist protects requests entering through Traefik.
+excluded. Jellyfin and Traefik share the dedicated `jellyfin_traefik` network.
+Other stacks cannot reach Jellyfin directly over this network; requests through
+Traefik still use the standard allowlist.
 
 ## Authentication
 
@@ -65,7 +66,8 @@ capabilities are dropped, privilege escalation is blocked, and the root
 filesystem is read-only. The service has a 2 GiB memory limit and four CPUs.
 No GPU is exposed, so transcoding uses the CPU.
 
-Jellyfin trusts forwarded headers from the existing `traefik_proxy` IPv4 subnet
-`172.16.32.0/20`. Update Known Proxies in Dashboard → Networking if that subnet
-changes. The previous Cloudflare connector, public DNS record, and tunnel have
-been removed, along with their Terraform configuration.
+Jellyfin trusts forwarded headers from the dedicated `jellyfin_traefik` IPv4
+and IPv6 subnets. Set Known Proxies in Dashboard → Networking to the subnets
+reported by `docker network inspect jellyfin_traefik`; update them if the network
+is recreated with different subnets. The previous Cloudflare connector, public
+DNS record, and tunnel have been removed, along with their Terraform configuration.

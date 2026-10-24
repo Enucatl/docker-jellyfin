@@ -15,12 +15,12 @@ services:
     tmpfs:
       - /tmp:size=256m,uid=1000,gid=1000
     networks:
-      - traefik_proxy
+      - jellyfin_traefik
     environment:
       JELLYFIN_PublishedServerUrl: https://jellyfin.atlas.home.arpa
     labels:
       - 'traefik.enable=true'
-      - 'traefik.docker.network=traefik_proxy'
+      - 'traefik.docker.network=jellyfin_traefik'
       - 'traefik.http.routers.jellyfin.rule=Host(`jellyfin.atlas.home.arpa`)'
       - 'traefik.http.routers.jellyfin.entrypoints=https'
       - 'traefik.http.routers.jellyfin.tls=true'
@@ -38,5 +38,6 @@ volumes:
   cache:
 
 networks:
-  traefik_proxy:
-    external: true
+  jellyfin_traefik:
+    name: jellyfin_traefik
+    enable_ipv6: true
