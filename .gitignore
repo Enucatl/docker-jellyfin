@@ -1,0 +1,7 @@
+secrets/
+terraform/.terraform/
+terraform/*.tfstate*
+terraform/*.tfplan
+terraform/*.tfvars
+
+.env
