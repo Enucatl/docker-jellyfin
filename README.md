@@ -5,6 +5,13 @@ terminates HTTPS and applies the standard `secured@file` middleware (network
 allowlist, rate limit, and HTTPS redirect). Authelia provides OIDC login. No host
 port is published. Native clients use the same URL.
 
+For TV clients without the homelab CA, use http://jellyfin.atlas.home.arpa
+over WireGuard and sign in using Quick Connect. This temporary HTTP route keeps
+the standard network allowlist and entrypoint rate limit, with higher priority
+than Traefik's catch-all HTTPS redirect. HTTPS remains available at the original
+URL. HTTP traffic is encrypted inside WireGuard, but not between its gateway
+and Jellyfin. Remove the `jellyfin-http` router labels when no longer needed.
+
 Start with `docker compose up -d`. Stop with `docker compose stop`.
 Clients must trust the homelab CA and support the certificate and TLS settings
 used by the existing Traefik service. LAN IPv4 and IPv6 HTTPS have been verified
@@ -50,6 +57,26 @@ accounts now use SSO-only authentication and previous device sessions have been
 revoked. A preserved account without a matching FreeIPA username (currently
 `brandon`) needs that directory identity or an explicit account link before it
 can sign in through SSO. No local administrator or LDAP password login remains.
+
+### TV account
+
+FreeIPA user `tv` is a playback-only Jellyfin account. Its generated password is
+stored in ignored `secrets/tv_password` (mode 600). Sign in as `tv` through
+Authelia in a separate browser session, then approve the TV's Quick Connect code.
+The account has no administrator, media deletion, download, Live TV, shared-device
+control, or library-management permissions. Playback and transcoding are enabled.
+
+In FreeIPA, `tv` has `/usr/sbin/nologin`, `/nonexistent` as its home, its own
+unprivileged primary group, and no `ipausers`, `admins`, or application-role
+membership. The `allow_all` and `allow_systemd-user` HBAC rules now allow only
+`ipausers` and `admins`; all previously existing users remain covered. Vault's
+LDAP and Kerberos user filters explicitly exclude `uid=tv`. Other Authelia apps
+require privileged groups. Standard FreeIPA directory/self-service access still
+exists; this account is not isolated from FreeIPA itself.
+
+If recreating `tv`, remove its automatically assigned `ipausers` membership
+before distributing its password. Do not restore `usercategory=all` on either
+HBAC rule, as that would also admit this account to host services.
 
 ### Plugin configuration
 
