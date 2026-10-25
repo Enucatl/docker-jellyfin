@@ -111,3 +111,7 @@ before you share the password. Keep its shell as `/usr/sbin/nologin` and its hom
 as `/nonexistent`. Do not set `usercategory=all` on the `allow_all` or
 `allow_systemd-user` HBAC rules. Vault must continue to exclude `uid=tv`.
 The account still has standard FreeIPA directory and self-service access.
+
+## License
+
+This repository is licensed under the [GNU General Public License v3.0](LICENSE).
