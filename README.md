@@ -1,6 +1,9 @@
 # Jellyfin
 
-Private media server: https://jellyfin.atlas.home.arpa.
+Private media server: https://jellyfin.atlas.intranet.enucatl.com.
+The existing https://jellyfin.atlas.home.arpa address remains supported.
+Shared `../.env` supplies `DOCKER_DOMAIN` for the existing alias and
+`ACME_DOCKER_DOMAIN` for the new alias and published server URL.
 
 ## Start and stop
 
@@ -29,15 +32,15 @@ FreeIPA username needs a directory identity or an explicit SSO account link.
 
 ## Network access
 
-Use HTTPS with a client that trusts the homelab CA. LAN, trusted WiFi, Cortex,
+The new hostname uses Traefik's existing Let's Encrypt wildcard certificate;
+clients using `home.arpa` still need to trust the homelab CA. LAN, trusted WiFi, Cortex,
 WireGuard, and Docker IPv4 sources are allowed. Guest and IoT networks are blocked.
 No container port is published on the host.
 
-For TVs without the homelab CA, use http://jellyfin.atlas.home.arpa over
-WireGuard, then sign in with Quick Connect. This temporary route uses the same
-network allowlist. Traffic between the WireGuard gateway and Jellyfin is not
-encrypted. Remove the `jellyfin-http` router labels when this route is no longer
-needed.
+For TVs without the homelab CA, use the new HTTPS hostname over WireGuard,
+then sign in with Quick Connect. HTTP requests redirect to HTTPS through
+Traefik; Jellyfin is no longer served over HTTP. Internal DNS must resolve
+`jellyfin.atlas.intranet.enucatl.com` to Traefik's private addresses.
 
 Jellyfin and Traefik share the `jellyfin_traefik` network. In **Dashboard →
 Networking → Known Proxies**, enter its IPv4 and IPv6 subnets. Check them with:
@@ -92,7 +95,8 @@ Configure provider `authelia`:
 | Disable HTTPS / skip endpoint or issuer validation | All disabled |
 | Live TV access / management | Both disabled |
 
-The callback URL is
+The callback URLs are
+`https://jellyfin.atlas.intranet.enucatl.com/sso/OID/redirect/authelia` and
 `https://jellyfin.atlas.home.arpa/sso/OID/redirect/authelia`.
 Authelia requires PKCE S256 and `client_secret_post`. Its client settings are in
 `../authelia/config/configuration.yml`. Its secret digest is in

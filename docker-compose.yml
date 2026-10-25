@@ -16,19 +16,14 @@ services:
     networks:
       - jellyfin_traefik
     environment:
-      JELLYFIN_PublishedServerUrl: https://jellyfin.atlas.home.arpa
+      JELLYFIN_PublishedServerUrl: https://jellyfin.${ACME_DOCKER_DOMAIN}
     labels:
       - 'traefik.enable=true'
       - 'traefik.docker.network=jellyfin_traefik'
-      - 'traefik.http.routers.jellyfin.rule=Host(`jellyfin.atlas.home.arpa`)'
+      - 'traefik.http.routers.jellyfin.rule=Host(`jellyfin.${DOCKER_DOMAIN}`) || Host(`jellyfin.${ACME_DOCKER_DOMAIN}`)'
       - 'traefik.http.routers.jellyfin.entrypoints=https'
       - 'traefik.http.routers.jellyfin.tls=true'
       - 'traefik.http.routers.jellyfin.middlewares=secured@file'
-      - 'traefik.http.routers.jellyfin-http.rule=Host(`jellyfin.atlas.home.arpa`)'
-      - 'traefik.http.routers.jellyfin-http.entrypoints=http'
-      - 'traefik.http.routers.jellyfin-http.priority=100000'
-      - 'traefik.http.routers.jellyfin-http.middlewares=default-allowlist@file'
-      - 'traefik.http.routers.jellyfin-http.service=jellyfin'
       - 'traefik.http.services.jellyfin.loadbalancer.server.port=8096'
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8096/health"]
