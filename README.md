@@ -30,6 +30,14 @@ Other users can view all libraries. The `tv` account has playback access only.
 Existing accounts keep their watch history. An account without a matching
 FreeIPA username needs a directory identity or an explicit SSO account link.
 
+Both Jellyfin addresses sign in through
+https://authelia.atlas.intranet.enucatl.com. Authelia also continues to serve
+`home.arpa` applications; its two domains have separate browser sessions.
+Signing out of Jellyfin ends only that Jellyfin session. For a complete browser
+sign-out, also sign out at the Authelia portal above. If you used the
+`home.arpa` Authelia portal, sign out there separately too. Other signed-in
+devices retain their own Jellyfin sessions.
+
 ## Network access
 
 The new hostname uses Traefik's existing Let's Encrypt wildcard certificate;
@@ -81,7 +89,7 @@ Configure provider `authelia`:
 
 | Setting | Value |
 | --- | --- |
-| OIDC endpoint | `https://authelia.atlas.home.arpa` |
+| OIDC endpoint | `https://authelia.atlas.intranet.enucatl.com` |
 | Client ID | `jellyfin` |
 | Client secret | Contents of `secrets/oidc_client_secret` |
 | Enabled / authorization / all folders | All enabled |
@@ -106,6 +114,13 @@ Authelia requires PKCE S256 and `client_secret_post`. Its client settings are in
 Back up the configuration volume securely. The plugin stores the raw client
 secret and account links in `/config/plugins/configurations/SSO-Auth.xml`
 (mode 600). It cannot read the secret from a separate file.
+
+To change the endpoint, edit the existing `authelia` provider in the SSO plugin
+settings and save it. Keep its client secret, account links, and validation
+settings. This persists in the configuration volume across container updates.
+Test a fresh browser login from each Jellyfin address and confirm the callback
+returns to that same address. Then sign out of Jellyfin and the Authelia portal
+and confirm a fresh login asks for credentials again.
 
 The migration backup is `secrets/before-oidc.tar.gz`. Stop Jellyfin before you
 restore it. This backup also restores LDAP login and old device sessions.
